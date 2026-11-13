@@ -165,19 +165,22 @@
             document.getElementById('input-section').classList.add('hidden');
             document.getElementById('tracking-section').classList.remove('hidden');
 
+            // الانضمام لقناة الطلب المحددة
             socket.emit('join-order', myOrderNumber);
         }
 
+        // الاستماع لتحديثات حالة الطلب بدقة
         socket.on('order-status-update', (data) => {
-            if (data.orderNumber === myOrderNumber) {
+            console.log("Status update received:", data);
+            if (parseInt(data.orderNumber) === parseInt(myOrderNumber)) {
                 const box = document.getElementById('statusBox');
                 if (data.status === 'ready') {
                     box.className = 'status-box status-ready';
                     box.innerHTML = 'Siparişiniz Hazır! 🥳';
                     playAudioLocally();
-                } else if (data.status === 'completed') {
+                } else if (data.status === 'preparing') {
                     box.className = 'status-box status-preparing';
-                    box.innerHTML = 'Tamamlandı ✅';
+                    box.innerHTML = 'Hazırlanıyor... ⏳';
                 }
             }
         });
