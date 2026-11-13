@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Q-Sıra - Sipariş Takibi</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #10375c;
+            color: #333;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container { width: 100%; max-width: 400px; padding: 20px; }
+        .card-box {
+            background: white; padding: 30px; border-radius: 20px;
+            text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        .logo { font-size: 28px; font-weight: bold; color: #10375c; margin: 0; }
+        .logo span { color: #eb8317; }
+        .store-name { color: #666; font-size: 14px; margin-bottom: 25px; }
+        .input-group input {
+            width: 80%; padding: 12px; font-size: 20px; text-align: center;
+            border: 2px solid #eb8317; border-radius: 10px; margin: 15px 0; outline: none;
+        }
+        .btn {
+            background-color: #eb8317; color: white; border: none; padding: 12px 20px;
+            font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer;
+            width: 100%; transition: 0.2s; margin-top: 10px;
+        }
+        .btn:hover { background-color: #d07113; }
+        .btn-stop { background-color: #dc2626; margin-top: 15px; }
+        .btn-stop:hover { background-color: #b91c1c; }
+        .ticket-number { font-size: 56px; font-weight: bold; color: #10375c; margin: 10px 0; }
+        .status-badge {
+            background: #e2e8f0; color: #475569; padding: 12px;
+            border-radius: 8px; font-weight: bold; margin-top: 15px;
+        }
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(16, 55, 92, 0.95); display: flex; justify-content: center; align-items: center; z-index: 999;
+        }
+        .modal-content {
+            background: white; padding: 30px; border-radius: 20px; text-align: center; width: 85%; max-width: 350px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+        }
+        .stars { font-size: 38px; cursor: pointer; color: #cbd5e1; margin: 15px 0; }
+        .stars span.active, .stars span:hover { color: #f59e0b; }
+        .feedback-form textarea {
+            width: 100%; height: 80px; padding: 10px; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 10px; resize: none; box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- شاشة إدخال الرقم -->
+        <div class="card-box" id="inputScreen">
+            <h1 class="logo">Q-<span>Sıra</span></h1>
+            <p class="store-name">Kafaye Kahve & Espresso</p>
+            <h3>Sipariş Numaranız</h3>
+            <p>Fişinizdeki sipariş numarasını giriniz</p>
+            
+            <div class="input-group">
+                <input type="number" id="orderInput" placeholder="Örn: 50" autocomplete="off">
+            </div>
+
+            <button type="button" class="btn" id="startTrackBtn">Siparişi Takip Et</button>
+            <button type="button" class="btn" id="notifBtn" style="background-color: #2563eb; font-size: 14px;">🔔 Bildirimleri Etkinleştir</button>
+        </div>
+
+        <!-- شاشة الانتظار -->
+        <div class="card-box" id="trackingScreen" style="display: none;">
+            <h1 class="logo">Q-<span>Sıra</span></h1>
+            <span style="color: #666; font-size: 14px;">Sipariş Numaranız</span>
+            <div class="ticket-number" id="ticketNo">--</div>
+            <div class="status-badge" id="statusBadge">Hazırlanıyor... ⏳</div>
+            <button type="button" class="btn" id="notifBtnTrack" style="background-color: #2563eb; font-size: 14px; margin-top: 20px;">🔔 Bildirimleri Aç</button>
+        </div>
+
+        <!-- نافذة الجاهزية والتقييم -->
+        <div class="modal" id="reviewModal" style="display:none;">
+            <div class="modal-content">
+                <h2 style="color: #22c55e; margin-top:0;">Siparişiniz Hazır! 🎉</h2>
+                <p>Lütfen deneyiminizi puanlayın:</p>
+                
+                <div class="stars" id="starRating">
+                    <span data-value="1">★</span>
+                    <span data-value="2">★</span>
+                    <span data-value="3">★</span>
+                    <span data-value="4">★</span>
+                    <span data-value="5">★</span>
+                </div>
+
+                <div class="feedback-form" id="feedbackForm" style="display: none;">
+                    <textarea id="feedbackText" placeholder="Görüşleriniz yönetime iletilecektir."></textarea>
+                    <button type="button" class="btn" id="sendFeedbackBtn">Görüşü Gönder</button>
+                </div>
+
+                <button type="button" class="btn btn-stop" id="stopRingingBtn">🔇 Sesi Kapat ve Kapat</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const GOOGLE_MAPS_REVIEW_URL = "https://maps.google.com"; // ضع رابط خرائط جوجل الفعلي هنا
+
+        const startTrackBtn = document.getElementById('startTrackBtn');
+        const orderInput = document.getElementById('orderInput');
+        const inputScreen = document.getElementById('inputScreen');
+        const trackingScreen = document.getElementById('trackingScreen');
+        const ticketNo = document.getElementById('ticketNo');
+        const reviewModal = document.getElementById('reviewModal');
+        const stopRingingBtn = document.getElementById('stopRingingBtn');
+
+        let ringInterval = null;
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(err => console.log(err));
+        }
+
+        function requestNotifPermission() {
+            if (!("Notification" in window)) return;
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    alert('Bildirimler etkinleştirildi! 🔔');
+                }
+            });
+        }
+
+        document.getElementById('notifBtn').addEventListener('click', requestNotifPermission);
+        document.getElementById('notifBtnTrack').addEventListener('click', requestNotifPermission);
+
+        function activateTracking(num) {
+            ticketNo.innerText = num;
+            inputScreen.style.display = 'none';
+            trackingScreen.style.display = 'block';
+        }
+
+        // قراءة رقم الطلب تلقائياً من الرابط إن وجد (?order=50)
+        const urlParams = new URLSearchParams(window.location.search);
+        const autoOrder = urlParams.get('order');
+        if (autoOrder) {
+            activateTracking(autoOrder.trim());
+        }
+
+        startTrackBtn.addEventListener('click', () => {
+            const num = orderInput.value.trim();
+            if (num === "") {
+                alert("Lütfen bir sipariş numarası giriniz!");
+                return;
+            }
+            activateTracking(num);
+        });
+
+        function startContinuousRinging() {
+            if (ringInterval) return;
+            const playBeep = () => {
+                try {
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = 'sine';
+                    osc.frequency.value = 650;
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.3);
+                } catch (e) {}
+            };
+            playBeep();
+            ringInterval = setInterval(playBeep, 1000);
+        }
+
+        function stopContinuousRinging() {
+            if (ringInterval) {
+                clearInterval(ringInterval);
+                ringInterval = null;
+            }
+        }
+
+        function showSystemNotification(orderNum) {
+            if ("Notification" in window && Notification.permission === 'granted') {
+                navigator.serviceWorker.ready.then(registration => {
+                    registration.showNotification("Q-Sıra - Siparişiniz Hazır!", {
+                        body: `Sipariş #${orderNum} hazır! Lütfen teslim alınız.`,
+                        vibrate: [300, 100, 300]
+                    });
+                });
+            }
+        }
+
+        socket.on('notify_customer', (readyOrderNum) => {
+            const currentOrder = ticketNo.innerText.trim();
+            if (String(readyOrderNum) === String(currentOrder)) {
+                startContinuousRinging();
+                showSystemNotification(readyOrderNum);
+                inputScreen.style.display = 'none';
+                trackingScreen.style.display = 'none';
+                reviewModal.style.display = 'flex';
+            }
+        });
+
+        stopRingingBtn.addEventListener('click', () => {
+            stopContinuousRinging();
+            reviewModal.style.display = 'none';
+        });
+
+        const stars = document.querySelectorAll('#starRating span');
+        const feedbackForm = document.getElementById('feedbackForm');
+
+        stars.forEach(star => {
+            star.addEventListener('click', (e) => {
+                stopContinuousRinging();
+                const rating = parseInt(e.target.getAttribute('data-value'));
+                stars.forEach((s, index) => {
+                    s.classList.toggle('active', index < rating);
+                });
+
+                if (rating >= 4) {
+                    window.location.href = GOOGLE_MAPS_REVIEW_URL;
+                } else {
+                    feedbackForm.style.display = 'block';
+                }
+            });
+        });
+
+        document.getElementById('sendFeedbackBtn').addEventListener('click', () => {
+            stopContinuousRinging();
+            if (document.getElementById('feedbackText').value.trim() !== "") {
+                alert("Görüşünüz yönetime iletildi. Teşekkür ederiz!");
+                reviewModal.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
