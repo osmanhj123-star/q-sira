@@ -1,11 +1,11 @@
-self.addEventListener('push', event => {
-    const data = event.data ? event.data.json() : { title: 'Q-Sıra', body: 'Güncelleme var' };
+// Service Worker للـ Web Push
+self.addEventListener('push', function(event) {
+    const data = event.data ? event.data.json() : { title: 'Q-Sıra', body: 'Yeni bildirim' };
     
     const options = {
         body: data.body,
-        icon: 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png',
-        badge: 'https://cdn-icons-png.flaticon.com/512/1046/1046784.png',
-        vibrate: [200, 100, 200]
+        icon: '/icon.png',
+        badge: '/icon.png'
     };
 
     event.waitUntil(
@@ -13,7 +13,7 @@ self.addEventListener('push', event => {
     );
 });
 
-self.addEventListener('notificationclick', event => {
+self.addEventListener('notificationclick', function(event) {
     event.notification.close();
     event.waitUntil(
         clients.openWindow('/')
