@@ -11,7 +11,7 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// مفاتيح VAPID الخاصة بـ Web Push (تم توليدها خصيصاً لمشروعك)
+// مفاتيح VAPID الخاصة بـ Web Push
 const publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYVK5NzlFY';
 const privateVapidKey = '5_A3N182-jQh17W2l_1B7c1Q5g2X8l3J9z8F1k4v7m0';
 
@@ -21,12 +21,10 @@ webpush.setVapidDetails(
     privateVapidKey
 );
 
-// تخزين اشتراكات الزبائن للإشعارات
 let pushSubscriptions = {}; 
-// تخزين حالة الطلبات
 let orderStatuses = {};
 
-// استقبال اشتراك المتصفح بالـ Push
+// مسار استقبال اشتراكات الإشعارات
 app.post('/subscribe', (req, res) => {
     const { orderNumber, subscription } = req.body;
     if (orderNumber) {
@@ -50,7 +48,7 @@ io.on('connection', (socket) => {
         orderStatuses[orderNumber] = status;
         io.to(`order-${orderNumber}`).emit('order-status-update', { orderNumber, status });
 
-        // إذا أصبح الطلب جاهزاً، أرسل إشعار Web Push حقيقي حتى لو التطبيق مغلق!
+        // إرسال الإشعار الفعلي عبر Web Push عندما يصبح الطلب جاهزاً
         if (status === 'ready' && pushSubscriptions[orderNumber]) {
             const payload = JSON.stringify({
                 title: 'Q-Sıra - Siparişiniz Hazır! 🥳',
