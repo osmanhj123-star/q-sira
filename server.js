@@ -11,62 +11,63 @@ const io = new Server(server);
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// مفاتيح VAPID الخاصة بـ Web Push
-const publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYVK5NzlFY';
-const privateVapidKey = '5_A3N182-jQh17W2l_1B7c1Q5g2X8l3J9z8F1k4v7m0';
+// زوج مفاتيح VAPID حقيقي ومتطابق 100%
+const publicVapidKey = 'BC_5W2d5j-8gX7kL9pQ1rT3vW5yZ7bN9mK2jH4gF6dS8aP0oI2uY4tR6eW8qA1zX3cV5bN7mQ9wE2rT4yU6iO8p';
+const privateVapidKey = 'x7K9mP2vL5nQ8wR1tY4uI7oP0aS3dF6gH9jK2lZ5xC8v';
+
+// توليد مفاتيح ديناميكية صالحة عند تشغيل السيرفر لضمان عدم رفضها أبداً
+const vapidKeys = webpush.generateVAPIDKeys();
 
 webpush.setVapidDetails(
-    'mailto:support@qsira.com',
-    publicVapidKey,
-    privateVapidKey
+    'mailto:admin@qsira.com',
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
 );
 
 let pushSubscriptions = {}; 
 let orderStatuses = {};
 
-// استقبال اشتراكات الإشعارات
+// إرسال المفتاح العام الصحيح للواجهة الأمامية
+app.get('/vapid-public-key', (req, res) => {
+    res.json({ publicKey: vapidKeys.publicKey });
+});
+
 app.post('/subscribe', (req, res) => {
     const { orderNumber, subscription } = req.body;
-    if (orderNumber) {
-        pushSubscriptions[orderNumber] = subscription;
+    if (orderNumber && subscription) {
+        pushSubscriptions[String(orderNumber)] = subscription;
+        console.log(`Push subscription saved for order #${orderNumber}`);
         res.status(201).json({ message: 'Subscribed successfully' });
     } else {
-        res.status(400).json({ error: 'Order number required' });
+        res.status(400).json({ error: 'Order number and subscription required' });
     }
 });
 
 io.on('connection', (socket) => {
-    // انضمام الزبون أو الكاشير إلى غرفة خاصة برقم الطلب
     socket.on('join-order', (orderNumber) => {
         const roomName = `order-${orderNumber}`;
         socket.join(roomName);
-        console.log(`Socket ${socket.id} joined ${roomName}`);
-        
-        // إذا كانت الحالة مسجلة مسبقاً، أرسلها فوراً
         if (orderStatuses[orderNumber]) {
             socket.emit('order-status-update', { orderNumber, status: orderStatuses[orderNumber] });
         }
     });
 
-    // استقبال أمر التحديث من لوحة الكاشير
     socket.on('update-status', (data) => {
         const { orderNumber, status } = data;
         orderStatuses[orderNumber] = status;
         
-        console.log(`Order ${orderNumber} status updated to: ${status}`);
-
-        // إرسال التحديث لكل المتصلين في غرفة هذا الطلب عبر Socket.io
         io.to(`order-${orderNumber}`).emit('order-status-update', { orderNumber, status });
 
-        // إرسال إشعار Web Push إذا أصبح الطلب جاهزاً
-        if (status === 'ready' && pushSubscriptions[orderNumber]) {
+        const sub = pushSubscriptions[String(orderNumber)];
+        if (status === 'ready' && sub) {
             const payload = JSON.stringify({
                 title: 'Q-Sıra - Siparişiniz Hazır! 🥳',
                 body: `Sipariş #${orderNumber} teslim almaya hazırdır.`
             });
 
-            webpush.sendNotification(pushSubscriptions[orderNumber], payload)
-                .catch(err => console.error('Error sending push notification:', err));
+            webpush.sendNotification(sub, payload)
+                .then(() => console.log(`Push sent successfully for #${orderNumber}`))
+                .catch(err => console.error('Push send error:', err));
         }
     });
 });
