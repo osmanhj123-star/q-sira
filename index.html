@@ -115,4 +115,121 @@
 
     <div class="card">
         <h1>Q-Sıra</h1>
-        <div class="subtitle">Kaf
+        <div class="subtitle">Kafaye Kahve & Espresso</div>
+
+        <div id="input-section">
+            <div class="section-title">Sipariş Numaranız</div>
+            <div class="desc">Fişinizdeki sipariş numarasını giriniz</div>
+            <input type="number" id="orderInput" placeholder="Örn: 50">
+            <button class="btn btn-primary" onclick="trackOrder()">Siparişi Takip Et</button>
+        </div>
+
+        <div id="tracking-section" class="hidden">
+            <div class="section-title">Sipariş Numaranız</div>
+            <div id="displayOrderNum" style="font-size: 48px; font-weight: bold; color: #ee6c4d; margin-bottom: 15px;">--</div>
+            
+            <div id="statusBox" class="status-box status-preparing">
+                Hazırlanıyor... ⏳
+            </div>
+        </div>
+
+        <button id="notifBtn" class="btn btn-notification" onclick="requestNotificationPermission()">
+            🔔 Bildirimleri Aç
+        </button>
+    </div>
+
+    <audio id="notifSound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+    <script>
+        const socket = io();
+        let myOrderNumber = null;
+
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const orderParam = urlParams.get('order');
+            if (orderParam) {
+                document.getElementById('orderInput').value = orderParam;
+                trackOrder();
+            }
+            checkNotificationState();
+        };
+
+        function trackOrder() {
+            const val = document.getElementById('orderInput').value.trim();
+            if (!val) {
+                alert('Lütfen geçerli bir sipariş numarası giriniz!');
+                return;
+            }
+            myOrderNumber = parseInt(val);
+            document.getElementById('displayOrderNum').innerText = myOrderNumber;
+            document.getElementById('input-section').classList.add('hidden');
+            document.getElementById('tracking-section').classList.remove('hidden');
+
+            socket.emit('join-order', myOrderNumber);
+        }
+
+        socket.on('order-status-update', (data) => {
+            if (data.orderNumber === myOrderNumber) {
+                const box = document.getElementById('statusBox');
+                if (data.status === 'ready') {
+                    box.className = 'status-box status-ready';
+                    box.innerHTML = 'Siparişiniz Hazır! 🥳';
+                    playAudioLocally();
+                } else if (data.status === 'completed') {
+                    box.className = 'status-box status-preparing';
+                    box.innerHTML = 'Tamamlandı ✅';
+                }
+            }
+        });
+
+        async function requestNotificationPermission() {
+            if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+                alert("Tarayıcınız Web Push bildirimlerini desteklemiyor.");
+                return;
+            }
+
+            try {
+                const registration = await navigator.serviceWorker.register('/sw.js');
+                const permission = await Notification.requestPermission();
+                
+                if (permission === "granted") {
+                    const publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYVK5NzlFY';
+                    
+                    const subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: publicVapidKey
+                    });
+
+                    if (myOrderNumber) {
+                        await fetch('/subscribe', {
+                            method: 'POST',
+                            body: JSON.stringify({ orderNumber: myOrderNumber, subscription }),
+                            headers: { 'content-type': 'application/json' }
+                        });
+                    }
+
+                    document.getElementById('notifBtn').classList.add('hidden');
+                    alert("Bildirimler başarıyla etkinleştirildi!");
+                } else {
+                    alert("Bildirim izni reddedildi.");
+                }
+            } catch (error) {
+                console.error('Push registration error:', error);
+            }
+        }
+
+        function checkNotificationState() {
+            if (Notification.permission === "granted") {
+                document.getElementById('notifBtn').classList.add('hidden');
+            }
+        }
+
+        function playAudioLocally() {
+            const sound = document.getElementById('notifSound');
+            if (sound) {
+                sound.play().catch(e => console.log("Audio play blocked", e));
+            }
+        }
+    </script>
+</body>
+</html>
