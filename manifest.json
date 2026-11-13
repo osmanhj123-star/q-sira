@@ -1,0 +1,15 @@
+{
+  "name": "Q-Sıra - Luuq Coffee Kilis",
+  "short_name": "Q-Sıra",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b2545",
+  "theme_color": "#ee6c4d",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/924/924514.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
