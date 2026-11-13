@@ -131,11 +131,11 @@
             <div id="statusBox" class="status-box status-preparing">
                 Hazırlanıyor... ⏳
             </div>
-        </div>
 
-        <button id="notifBtn" class="btn btn-notification" onclick="requestNotificationPermission()">
-            🔔 Bildirimleri Aç
-        </button>
+            <button id="notifBtn" class="btn btn-notification" onclick="subscribeUser()">
+                🔔 Bildirimleri Aç
+            </button>
+        </div>
     </div>
 
     <audio id="notifSound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
@@ -143,6 +143,19 @@
     <script>
         const socket = io();
         let myOrderNumber = null;
+        const publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYVK5NzlFY';
+
+        // دالة تحويل مفتاح VAPID للصيغة التي يفهمها المتصفح بدقة
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
 
         window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -151,10 +164,9 @@
                 document.getElementById('orderInput').value = orderParam;
                 trackOrder();
             }
-            checkNotificationState();
         };
 
-        function trackOrder() {
+        async function trackOrder() {
             const val = document.getElementById('orderInput').value.trim();
             if (!val) {
                 alert('Lütfen geçerli bir sipariş numarası giriniz!');
@@ -165,13 +177,63 @@
             document.getElementById('input-section').classList.add('hidden');
             document.getElementById('tracking-section').classList.remove('hidden');
 
-            // الانضمام لقناة الطلب المحددة
+            // تشغيل الصوت بصمت لفتح قفل الصوت في متصفحات الهواتف
+            const sound = document.getElementById('notifSound');
+            if (sound) {
+                sound.play().then(() => { sound.pause(); sound.currentTime = 0; }).catch(() => {});
+            }
+
             socket.emit('join-order', myOrderNumber);
+
+            // إذا كان الزبون قد منح الإذن مسبقاً، نقوم بربط اشتراكه برقم الطلب الجديد تلقائياً
+            if ("Notification" in window && Notification.permission === "granted") {
+                await registerPushSubscription();
+            }
         }
 
-        // الاستماع لتحديثات حالة الطلب بدقة
+        async function subscribeUser() {
+            if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+                alert("Tarayıcınız arka plan bildirimlerini desteklemiyor. Lütfen sayfayı açık tutunuz.");
+                return;
+            }
+
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission === "granted") {
+                    await registerPushSubscription();
+                    alert("Bildirimler başarıyla açıldı! 🔔");
+                } else {
+                    alert("Bildirim izni reddedildi. Tarayıcı ayarlarından izin verebilirsiniz.");
+                }
+            } catch (error) {
+                console.error('Push error:', error);
+                alert("Hata: " + error.message);
+            }
+        }
+
+        async function registerPushSubscription() {
+            try {
+                const registration = await navigator.serviceWorker.register('/sw.js');
+                await navigator.serviceWorker.ready;
+
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+                });
+
+                await fetch('/subscribe', {
+                    method: 'POST',
+                    body: JSON.stringify({ orderNumber: myOrderNumber, subscription }),
+                    headers: { 'content-type': 'application/json' }
+                });
+
+                document.getElementById('notifBtn').classList.add('hidden');
+            } catch (err) {
+                console.error('Subscription failed:', err);
+            }
+        }
+
         socket.on('order-status-update', (data) => {
-            console.log("Status update received:", data);
             if (parseInt(data.orderNumber) === parseInt(myOrderNumber)) {
                 const box = document.getElementById('statusBox');
                 if (data.status === 'ready') {
@@ -185,52 +247,10 @@
             }
         });
 
-        async function requestNotificationPermission() {
-            if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-                alert("Tarayıcınız Web Push bildirimlerini desteklemiyor.");
-                return;
-            }
-
-            try {
-                const registration = await navigator.serviceWorker.register('/sw.js');
-                const permission = await Notification.requestPermission();
-                
-                if (permission === "granted") {
-                    const publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYVK5NzlFY';
-                    
-                    const subscription = await registration.pushManager.subscribe({
-                        userVisibleOnly: true,
-                        applicationServerKey: publicVapidKey
-                    });
-
-                    if (myOrderNumber) {
-                        await fetch('/subscribe', {
-                            method: 'POST',
-                            body: JSON.stringify({ orderNumber: myOrderNumber, subscription }),
-                            headers: { 'content-type': 'application/json' }
-                        });
-                    }
-
-                    document.getElementById('notifBtn').classList.add('hidden');
-                    alert("Bildirimler başarıyla etkinleştirildi!");
-                } else {
-                    alert("Bildirim izni reddedildi.");
-                }
-            } catch (error) {
-                console.error('Push registration error:', error);
-            }
-        }
-
-        function checkNotificationState() {
-            if (Notification.permission === "granted") {
-                document.getElementById('notifBtn').classList.add('hidden');
-            }
-        }
-
         function playAudioLocally() {
             const sound = document.getElementById('notifSound');
             if (sound) {
-                sound.play().catch(e => console.log("Audio play blocked", e));
+                sound.play().catch(e => console.log("Audio blocked", e));
             }
         }
     </script>
