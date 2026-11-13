@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Q-Sıra - Sipariş Takip</title>
+    <title>Q-Sıra - Luuq Coffee Kilis</title>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -38,7 +38,8 @@
         }
         .subtitle {
             color: #8d99ae;
-            font-size: 14px;
+            font-size: 15px;
+            font-weight: 700;
             margin-bottom: 25px;
         }
         .section-title {
@@ -74,8 +75,10 @@
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: all 0.3s;
             margin-bottom: 10px;
+            display: block;
+            text-decoration: none;
         }
         .btn-primary {
             background-color: #ee6c4d;
@@ -91,12 +94,22 @@
         .btn-notification:hover {
             background-color: #0b2545;
         }
+        .btn-review {
+            background: linear-gradient(135deg, #f4a261, #e76f51);
+            color: white;
+            box-shadow: 0 4px 12px rgba(231, 111, 81, 0.3);
+            margin-top: 15px;
+            animation: popIn 0.4s ease;
+        }
+        .btn-review:hover {
+            transform: translateY(-2px);
+        }
         .status-box {
             padding: 20px;
             border-radius: 10px;
             font-size: 20px;
             font-weight: 700;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
         .status-preparing {
             background-color: #e9ecef;
@@ -106,8 +119,22 @@
             background-color: #d4edda;
             color: #155724;
         }
+        .status-delivered {
+            background-color: #e0fbfc;
+            color: #0b2545;
+        }
+        .wake-badge {
+            font-size: 12px;
+            color: #2b9348;
+            margin-top: 10px;
+            display: none;
+        }
         .hidden {
             display: none !important;
+        }
+        @keyframes popIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
         }
     </style>
 </head>
@@ -115,12 +142,12 @@
 
     <div class="card">
         <h1>Q-Sıra</h1>
-        <div class="subtitle">Kafaye Kahve & Espresso</div>
+        <div class="subtitle">Luuq Coffee Kilis</div>
 
         <div id="input-section">
             <div class="section-title">Sipariş Numaranız</div>
             <div class="desc">Fişinizdeki sipariş numarasını giriniz</div>
-            <input type="number" id="orderInput" placeholder="Örn: 50">
+            <input type="number" id="orderInput" placeholder="Örn: 50" onkeypress="if(event.key==='Enter') trackOrder()">
             <button class="btn btn-primary" onclick="trackOrder()">Siparişi Takip Et</button>
         </div>
 
@@ -135,6 +162,13 @@
             <button id="notifBtn" class="btn btn-notification" onclick="subscribeUser()">
                 🔔 Bildirimleri Aç
             </button>
+
+            <!-- زر تقييم كافيه Luuq Coffee Kilis -->
+            <a id="googleReviewBtn" href="https://www.google.com/maps/search/?api=1&query=Luuq+Coffee+Kilis" target="_blank" class="btn btn-review hidden">
+                ⭐ Deneyiminizi Google'da Değerlendirin
+            </a>
+
+            <div id="wakeBadge" class="wake-badge">☀️ Ekran açık tutuluyor</div>
         </div>
     </div>
 
@@ -143,6 +177,25 @@
     <script>
         const socket = io();
         let myOrderNumber = null;
+        let wakeLock = null;
+
+        // إبقاء الشاشة مضاءة تلقائياً
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    document.getElementById('wakeBadge').style.display = 'block';
+                }
+            } catch (err) {
+                console.log('Wake Lock error:', err);
+            }
+        }
+
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
 
         function urlBase64ToUint8Array(base64String) {
             const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -165,115 +218,4 @@
         };
 
         async function trackOrder() {
-            const val = document.getElementById('orderInput').value.trim();
-            if (!val) {
-                alert('Lütfen geçerli bir sipariş numarası giriniz!');
-                return;
-            }
-            myOrderNumber = parseInt(val);
-            document.getElementById('displayOrderNum').innerText = myOrderNumber;
-            document.getElementById('input-section').classList.add('hidden');
-            document.getElementById('tracking-section').classList.remove('hidden');
-
-            const sound = document.getElementById('notifSound');
-            if (sound) {
-                sound.play().then(() => { sound.pause(); sound.currentTime = 0; }).catch(() => {});
-            }
-
-            socket.emit('join-order', myOrderNumber);
-
-            if ("Notification" in window && Notification.permission === "granted") {
-                await registerPushSubscription();
-            }
-        }
-
-        async function subscribeUser() {
-            if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-                alert("Tarayıcınız arka plan bildirimlerini desteklemiyor.");
-                return;
-            }
-
-            try {
-                const permission = await Notification.requestPermission();
-                if (permission === "granted") {
-                    await registerPushSubscription();
-                    alert("Bildirimler başarıyla açıldı! 🔔");
-                } else {
-                    alert("Bildirim izni reddedildi.");
-                }
-            } catch (error) {
-                alert("Hata: " + error.message);
-            }
-        }
-
-        async function registerPushSubscription() {
-            try {
-                // جلب المفتاح الصحيح المولّد من السيرفر
-                const keyRes = await fetch('/vapid-public-key');
-                const { publicKey } = await keyRes.json();
-
-                const registration = await navigator.serviceWorker.register('/sw.js');
-                await navigator.serviceWorker.ready;
-
-                // إلغاء أي اشتراك قديم بمفتاح خاطئ إن وجد
-                const existingSub = await registration.pushManager.getSubscription();
-                if (existingSub) {
-                    await existingSub.unsubscribe();
-                }
-
-                const subscription = await registration.pushManager.subscribe({
-                    userVisibleOnly: true,
-                    applicationServerKey: urlBase64ToUint8Array(publicKey)
-                });
-
-                await fetch('/subscribe', {
-                    method: 'POST',
-                    body: JSON.stringify({ orderNumber: myOrderNumber, subscription }),
-                    headers: { 'content-type': 'application/json' }
-                });
-
-                document.getElementById('notifBtn').classList.add('hidden');
-            } catch (err) {
-                console.error('Subscription failed:', err);
-                alert("Abonelik hatası: " + err.message);
-            }
-        }
-
-        socket.on('order-status-update', (data) => {
-            if (parseInt(data.orderNumber) === parseInt(myOrderNumber)) {
-                const box = document.getElementById('statusBox');
-                if (data.status === 'ready') {
-                    box.className = 'status-box status-ready';
-                    box.innerHTML = 'Siparişiniz Hazır! 🥳';
-                    playAudioLocally();
-                    showSystemNotification();
-                } else if (data.status === 'preparing') {
-                    box.className = 'status-box status-preparing';
-                    box.innerHTML = 'Hazırlanıyor... ⏳';
-                }
-            }
-        });
-
-        function showSystemNotification() {
-            if ("vibrate" in navigator) {
-                navigator.vibrate([300, 100, 300]);
-            }
-            if ("Notification" in window && Notification.permission === "granted") {
-                navigator.serviceWorker.ready.then(reg => {
-                    reg.showNotification('Q-Sıra - Siparişiniz Hazır! 🥳', {
-                        body: `Sipariş #${myOrderNumber} teslim almaya hazırdır.`,
-                        vibrate: [300, 100, 300]
-                    });
-                });
-            }
-        }
-
-        function playAudioLocally() {
-            const sound = document.getElementById('notifSound');
-            if (sound) {
-                sound.play().catch(e => console.log("Audio blocked", e));
-            }
-        }
-    </script>
-</body>
-</html>
+            const val = document.getElementById('
