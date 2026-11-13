@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Q-Sıra - Luuq Coffee Kilis</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Q-Sıra">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/924/924514.png">
+    
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -17,10 +23,32 @@
             background-color: #0b2545;
             color: #134074;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
             padding: 20px;
+        }
+        .ios-banner {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 15px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: none;
+        }
+        .ios-banner strong {
+            color: #533f03;
+            display: block;
+            margin-bottom: 4px;
+            font-size: 14px;
         }
         .card {
             background: #ffffff;
@@ -140,6 +168,12 @@
 </head>
 <body>
 
+    <!-- تنبيه ذكي يظهر لمستخدمي الآيفون فقط داخل المتصفح -->
+    <div id="iosInstallBanner" class="ios-banner">
+        <strong>📲 iPhone Kullanıcıları İçin Bildirim Uyarısı</strong>
+        Siparişiniz hazır olduğunda bildirim alabilmek için alttaki <b>Paylaş (⬆️)</b> simgesine basıp <b>"Ana Ekrana Ekle"</b> seçeneğini tıklayın.
+    </div>
+
     <div class="card">
         <h1>Q-Sıra</h1>
         <div class="subtitle">Luuq Coffee Kilis</div>
@@ -163,7 +197,6 @@
                 🔔 Bildirimleri Aç
             </button>
 
-            <!-- زر تقييم كافيه Luuq Coffee Kilis -->
             <a id="googleReviewBtn" href="https://www.google.com/maps/search/?api=1&query=Luuq+Coffee+Kilis" target="_blank" class="btn btn-review hidden">
                 ⭐ Deneyiminizi Google'da Değerlendirin
             </a>
@@ -179,7 +212,16 @@
         let myOrderNumber = null;
         let wakeLock = null;
 
-        // إبقاء الشاشة مضاءة تلقائياً
+        // فحص إذا كان الجهاز آيفون ومفتوح من المتصفح وليس من الشاشة الرئيسية
+        function checkIOSInstallPrompt() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            
+            if (isIOS && !isStandalone) {
+                document.getElementById('iosInstallBanner').style.display = 'block';
+            }
+        }
+
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
@@ -191,9 +233,15 @@
             }
         }
 
+        // تحديث الحالة تلقائياً عند العودة للصفحة (مهم جداً للآيفون)
         document.addEventListener('visibilitychange', async () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
-                await requestWakeLock();
+            if (document.visibilityState === 'visible') {
+                if (wakeLock !== null) {
+                    await requestWakeLock();
+                }
+                if (myOrderNumber) {
+                    socket.emit('join-order', myOrderNumber);
+                }
             }
         });
 
@@ -209,6 +257,7 @@
         }
 
         window.onload = function() {
+            checkIOSInstallPrompt();
             const urlParams = new URLSearchParams(window.location.search);
             const orderParam = urlParams.get('order');
             if (orderParam) {
@@ -244,7 +293,7 @@
 
         async function subscribeUser() {
             if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-                alert("Tarayıcınız arka plan bildirimlerini desteklemiyor.");
+                alert("iPhone kullanıyorsanız bildirimleri açmak için önce sayfayı 'Ana Ekrana Ekle' ile telefonunuza eklemelisiniz.");
                 return;
             }
 
