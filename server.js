@@ -24,7 +24,7 @@ webpush.setVapidDetails(
 let pushSubscriptions = {}; 
 let orderStatuses = {};
 
-// مسار استقبال اشتراكات الإشعارات
+// استقبال اشتراكات الإشعارات
 app.post('/subscribe', (req, res) => {
     const { orderNumber, subscription } = req.body;
     if (orderNumber) {
@@ -36,19 +36,29 @@ app.post('/subscribe', (req, res) => {
 });
 
 io.on('connection', (socket) => {
-    socket.on('join-order', (orderNum) => {
-        socket.join(`order-${orderNum}`);
-        if (orderStatuses[orderNum]) {
-            socket.emit('order-status-update', { orderNumber: orderNum, status: orderStatuses[orderNum] });
+    // انضمام الزبون أو الكاشير إلى غرفة خاصة برقم الطلب
+    socket.on('join-order', (orderNumber) => {
+        const roomName = `order-${orderNumber}`;
+        socket.join(roomName);
+        console.log(`Socket ${socket.id} joined ${roomName}`);
+        
+        // إذا كانت الحالة مسجلة مسبقاً، أرسلها فوراً
+        if (orderStatuses[orderNumber]) {
+            socket.emit('order-status-update', { orderNumber, status: orderStatuses[orderNumber] });
         }
     });
 
+    // استقبال أمر التحديث من لوحة الكاشير
     socket.on('update-status', (data) => {
         const { orderNumber, status } = data;
         orderStatuses[orderNumber] = status;
+        
+        console.log(`Order ${orderNumber} status updated to: ${status}`);
+
+        // إرسال التحديث لكل المتصلين في غرفة هذا الطلب عبر Socket.io
         io.to(`order-${orderNumber}`).emit('order-status-update', { orderNumber, status });
 
-        // إرسال الإشعار الفعلي عبر Web Push عندما يصبح الطلب جاهزاً
+        // إرسال إشعار Web Push إذا أصبح الطلب جاهزاً
         if (status === 'ready' && pushSubscriptions[orderNumber]) {
             const payload = JSON.stringify({
                 title: 'Q-Sıra - Siparişiniz Hazır! 🥳',
