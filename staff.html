@@ -1,92 +1,133 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Q-Sıra - Personel Paneli</title>
+    <title>Q-Sıra - Kasa Paneli</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Tajawal', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #0f172a;
-            color: white;
+            background-color: #0b2545;
+            color: #134074;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            margin: 0;
+            min-height: 100vh;
+            padding: 20px;
         }
-        .panel {
-            background: #1e293b; padding: 35px; border-radius: 20px;
-            width: 90%; max-width: 400px; text-align: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        .card {
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
         }
-        h1 { color: #eb8317; margin-top: 0; }
+        h1 {
+            color: #ee6c4d;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            color: #8d99ae;
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: #0b2545;
+        }
         input {
-            width: 80%; padding: 15px; font-size: 24px; text-align: center;
-            border-radius: 10px; border: 2px solid #334155; background: #0f172a;
-            color: white; margin: 15px 0; outline: none;
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.3s;
         }
-        input:focus { border-color: #eb8317; }
-        button {
-            background: #22c55e; color: white; border: none; padding: 15px;
-            font-size: 18px; font-weight: bold; border-radius: 10px;
-            width: 88%; cursor: pointer; transition: 0.2s;
+        input:focus {
+            border-color: #ee6c4d;
         }
-        button:hover { background: #16a34a; }
-        .log { margin-top: 20px; font-size: 14px; color: #94a3b8; }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 700;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-bottom: 10px;
+        }
+        .btn-primary {
+            background-color: #2b9348;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #1b632f;
+        }
+        #message {
+            margin-top: 15px;
+            font-weight: 700;
+            color: #2b9348;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
 
-    <!-- شاشة تسجيل الدخول -->
-    <div class="panel" id="loginPanel">
-        <h1>Personel Girişi 🔒</h1>
-        <p>Lütfen personel şifresini giriniz</p>
-        <input type="password" id="pinInput" placeholder="••••" maxlength="6">
-        <button id="loginBtn">Giriş Yap</button>
+    <div class="card">
+        <h1>Q-Sıra</h1>
+        <div class="subtitle">Kasa Paneli</div>
+
+        <div class="section-title">Hazır olan sipariş numarasını giriniz</div>
+        <input type="number" id="staffOrderInput" placeholder="Örn: 20">
+        <button class="btn btn-primary" onclick="callOrder()">Müşteriyi Çağır 🔔</button>
+
+        <div id="message"></div>
     </div>
 
-    <!-- لوحة التحكم -->
-    <div class="panel" id="controlPanel" style="display: none;">
-        <h1>Q-Sıra Kasa Paneli</h1>
-        <p>Hazır olan sipariş numarasını giriniz</p>
-        <input type="number" id="readyOrderInput" placeholder="Örn: 50">
-        <button id="notifyBtn">Müşteriyi Çağır 🔔</button>
-        <div class="log" id="statusLog">Sistem aktif ve hazır.</div>
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        const STAFF_PIN = "1234"; // كلمة المرور الخاصة بالموظفين (يمكنك تغييرها)
 
-        const loginPanel = document.getElementById('loginPanel');
-        const controlPanel = document.getElementById('controlPanel');
-        const pinInput = document.getElementById('pinInput');
-        const readyOrderInput = document.getElementById('readyOrderInput');
-        const statusLog = document.getElementById('statusLog');
-
-        document.getElementById('loginBtn').addEventListener('click', () => {
-            if (pinInput.value === STAFF_PIN) {
-                loginPanel.style.display = 'none';
-                controlPanel.style.display = 'block';
-            } else {
-                alert("Hatalı şifre!");
-                pinInput.value = "";
-            }
-        });
-
-        document.getElementById('notifyBtn').addEventListener('click', () => {
-            const orderNum = readyOrderInput.value.trim();
-            if (!orderNum) {
-                alert("Lütfen sipariş numarası giriniz!");
+        function callOrder() {
+            const val = document.getElementById('staffOrderInput').value.trim();
+            if (!val) {
+                alert('Lütfen bir sipariş numarası giriniz!');
                 return;
             }
-            socket.emit('order_ready', orderNum);
-            statusLog.innerText = `✅ Sipariş #${orderNum} için bildirim gönderildi.`;
-            readyOrderInput.value = "";
-            readyOrderInput.focus();
-        });
+
+            const orderNumber = parseInt(val);
+
+            // إرسال أمر تغيير الحالة إلى 'ready' للسيرفر
+            socket.emit('update-status', {
+                orderNumber: orderNumber,
+                status: 'ready'
+            });
+
+            // عرض رسالة تأكيد على لوحة الكاشير
+            document.getElementById('message').innerText = `Sipariş #${orderNumber} için bildirim gönderildi! ✅`;
+            
+            // تفريغ الحقل للطلب التالي
+            document.getElementById('staffOrderInput').value = '';
+            
+            setTimeout(() => {
+                document.getElementById('message').innerText = '';
+            }, 4000);
+        }
     </script>
 </body>
 </html>
